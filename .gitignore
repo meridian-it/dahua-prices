@@ -1,0 +1,11 @@
+.env
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.venv/
+.dev/
+*.xlsx
+.claude/
+.pytest_cache/
+*.tsbuildinfo

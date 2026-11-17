@@ -1,0 +1,72 @@
+# One command: docker compose up -d --build
+# Only secrets / deploy values come from .env (see .env.example); everything else is in the admin panel.
+
+name: it-trade-prices
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  db:
+    <<: *restart
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ittrade}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ittrade}
+      POSTGRES_DB: ${POSTGRES_DB:-ittrade}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    <<: *restart
+    build: ./backend
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER:-ittrade}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ittrade}
+      POSTGRES_DB: ${POSTGRES_DB:-ittrade}
+      JWT_SECRET: ${JWT_SECRET:-}
+      ACCESS_TOKEN_TTL_MINUTES: ${ACCESS_TOKEN_TTL_MINUTES:-15}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+    volumes:
+      - backend_data:/data
+      - ./seed:/seed:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    <<: *restart
+    build: ./frontend
+    environment:
+      INTERNAL_API_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  nginx:
+    <<: *restart
+    image: nginx:1.29-alpine
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  backend_data:
